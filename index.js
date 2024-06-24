@@ -1,216 +1,203 @@
-const PromptSync = require("prompt-sync");
-const prompt = PromptSync();
+const prompt = require('prompt-sync')();
 
-//Variáveis de teste
-// let x0 = 123456;
-// let a = 1103515245;
-// let c = 12345;
-// let m = 2147483648;
+let x0 = 123456789;
+let a = 1664525;
+let c = 1013904223;
+let m = 2147483648;
 
-// let tempo_medio_chegada = 1;
-// let tempo_medio_atendimento = 0.5;
-// let tempo_simulacao = 480;
-//
+console.log('Você quer digitar os parametros para a geração dos NPAs?(S/N)\n');
 
-//Prompt de variáveis
-let x0 = Number(prompt("Insira o valor de x0: "));
-let a = Number(prompt("Insira o valor de a: "));
-let c = Number(prompt("Insira o valor de c: "));
-let m = Number(prompt("Insira o valor de m: "));
+let isNotValid = prompt('Resposta: ').toUpperCase() === 'S';
 
-let tempo_medio_chegada = Number(prompt("Insira o tempo médio entre chegadas (exponencial): "));
-let tempo_medio_atendimento = Number(prompt("Insira o tempo médio entre atendimentos (exponencial): "));
-let tempo_simulacao = Number(prompt("Insira o tempo de simulação (minutos): "));
-//
+// function for validate NPA parameters
+const validSeed = () => {
+  const observedFrequency = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const expectedFrequency = 250;
 
-//Variáveis gerais
-let status_servidor = 0;
-let numero_em_fila = 0;
-let fila_chegada = [];
-let tempo_ultimo_evento = 0;
-let relogio_simulacao = 0;
-let proxima_saida = 9999999999;
-let fim_simulacao = false;
-let proximo_evento = "C";
-let tempo_total_fila = 0;
-let area_sob_qt = 0;
-let area_sob_ut = 0;
-let clientes_atendidos = 0;
-let proxima_chegada = gerarChegada();
+  let xBefore = x0;
 
-function aguardar(segundos) {
-    return new Promise((resolve) => setTimeout(resolve, segundos));
+  for (let index = 0; index < 5000; index++) {
+    xBefore = (a * xBefore + c) % m;
+    let normalizedValue = xBefore / (m - 1);
+    let numberPosition = parseInt(normalizedValue / 0.05);
+    observedFrequency[numberPosition] += 1;
+  }
+
+  let quiquadr_calc = 0;
+  const quiquadr_tab = 30.14;
+  for (let index = 0; index < 20; index++) {
+    quiquadr_calc += (observedFrequency[index] - expectedFrequency) ** 2 / expectedFrequency;
+  }
+
+  if (quiquadr_calc <= quiquadr_tab) {
+    isNotValid = false;
+  } else {
+    console.log('Essa sequência gera NPAs inválidos, digite novamente!');
+  }
+};
+
+// variables prompt
+while (isNotValid) {
+  console.log('\nDigite os paramentros para gerar NPAs');
+  x0 = Number(prompt('Valor de x0: '));
+  a = Number(prompt('Valor de a: '));
+  c = Number(prompt('Valor de c: '));
+  m = Number(prompt('Valor de m: '));
+
+  validSeed();
 }
 
+console.log('\nDigite as variaveis para a simulação');
+let timeMediumArrival = Number(prompt('Tempo medio entre chegadas: '));
+let timeMediumAttendance = Number(prompt('Tempo medio entre atendimentos: '));
+let timeSimulation = Number(prompt('Tempo em minutos para simulacao: '));
 
+// variables simulation
+let statusServer = 0;
+let queueSize = 0;
+let queueArrival = [];
+let timeLastEvent = 0;
+let simulationClock = 0;
+let nextOutput = 9999999999;
+let simulationEnd = false;
+let nextEvent = 'input';
+let timeTotalQueue = 0;
+let areaSobQt = 0;
+let areaSobBt = 0;
+let clientAttended = 0;
+let nextArrival = getNextEvent('input');
+let currentClient = 0;
 
+// show simulation data
+const showStates = () => {
+  // console.clear();
 
-
-//Exibe todos os estados em tempo real.
-function exibirEstados() {
-    let proximaSaida = proxima_saida !== 9999999999 ? proxima_saida.toFixed(2) : proxima_saida;
-
-    console.clear();
-    console.log(`
-=========================
-|   ESTADOS DO SISTEMA  |
--------------------------
-| Status do servidor:     ${status_servidor}
-| Nº em fila:             ${numero_em_fila}
-| Fila de chegada:        [ ${fila_chegada.join(", ")} ]
-| Tempo do último evento: ${tempo_ultimo_evento.toFixed(2)}
-| Relógio da simulação:   ${relogio_simulacao.toFixed(2)}
-| Próxima chegada:        ${proxima_chegada.toFixed(2)}
-| Próxima saída:          ${proximaSaida}
-| Fim da simulação:       ${fim_simulacao}
-| Próximo evento:         ${proximo_evento}
-| Tempo total da fila:    ${tempo_total_fila.toFixed(2)}
-| Área sob Q﹙t﹚:         ${area_sob_qt.toFixed(2)}
-| Área sob U﹙t﹚:         ${area_sob_ut.toFixed(2)}
-| Clientes atendidos:     ${clientes_atendidos}
-=========================
-  `);
-}
-
-//Evento de chegada.
-function gerarChegada() {
-    let semente = (x0 * a + c) % m;
-    let npa = semente / (m - 1);
-    let numeroAleatorio = Math.abs(Math.log(npa) * tempo_medio_chegada);
-
-    x0 = semente;
-
-    return numeroAleatorio;
-}
-
-function processarChegada(chegada) {
-    relogio_simulacao = chegada;
-
-    proxima_chegada = relogio_simulacao + gerarChegada();
-
-    if (status_servidor === 0) {
-        status_servidor = 1;
-        proxima_saida = relogio_simulacao + gerarSaida();
-    } else {
-        calcularAreaQt();
-        calcularAreaUt();
-
-        fila_chegada.push(chegada);
-        numero_em_fila++;
-    }
-
-    tempo_ultimo_evento = relogio_simulacao;
-}
-
-//Evento de saída.
-function gerarSaida() {
-    let semente = (x0 * a + c) % m;
-    let npa = semente / (m - 1);
-    let numeroAleatorio = Math.abs(Math.log(npa) * tempo_medio_atendimento);
-
-    x0 = semente;
-
-    return numeroAleatorio;
-}
-
-function processarSaida(saida) {
-    relogio_simulacao = saida;
-
-    if (numero_em_fila > 0) {
-        proxima_saida = relogio_simulacao + gerarSaida();
-
-        calcularAreaQt();
-        removerDaFila();
-
-        tempo_total_fila += relogio_simulacao;
-    } else {
-        calcularAreaUt();
-        proxima_saida = 9999999999;
-        status_servidor = 0;
-    }
-
-    tempo_ultimo_evento = relogio_simulacao;
-    clientes_atendidos++;
-}
-
-//Remoção da fila
-function removerDaFila() {
-    fila_chegada.shift();
-    numero_em_fila = fila_chegada.length;
-}
-
-//Calculos de área
-function calcularAreaQt() {
-    area_sob_qt += (relogio_simulacao - tempo_ultimo_evento) * numero_em_fila;
-}
-
-function calcularAreaUt() {
-    area_sob_ut += (relogio_simulacao - tempo_ultimo_evento) * status_servidor;
-}
-
-//Alterna entre os eventos de chegada (C) e de saída (S).
-function alternarEvento() {
-    let proximaSaida = proxima_saida !== 9999999999 ? proxima_saida.toFixed(2) : proxima_saida;
-
-    console.log("\nTemporizador:");
-    console.log(`Próxima chegada: ${proxima_chegada.toFixed(2)}`);
-    console.log(`Próxima saída: ${proximaSaida}`);
-
-    if (proxima_chegada <= proxima_saida) return "C";
-
-    return "S";
-}
-
-//Função de inicialização do programa.
-async function iniciarSimulacao() {
-    let indice = 0;
-    let avancarGeracoes = false;
-    let continuarExibindo = "";
-
-    while (true) {
-        exibirEstados();
-
-        console.log(`Geração atual: ${indice + 1}`);
-        console.log("\nVocê deseja continuar exibindo os dados (s/n)?\n");
-
-        if (!avancarGeracoes) {
-            continuarExibindo = prompt("Resposta: ");
-        }
-
-        if (continuarExibindo === "n" || continuarExibindo === "N") {
-            avancarGeracoes = true;
-        }
-
-        if (proximo_evento === "C") processarChegada(proxima_chegada);
-        if (proximo_evento === "S") processarSaida(proxima_saida);
-
-        if (proxima_chegada > tempo_simulacao && proxima_saida === 9999999999) {
-            let tempoMedioEmFila = tempo_total_fila / clientes_atendidos;
-            let numeroMedioEmFila = area_sob_qt / tempo_simulacao;
-            let taxaDeOcupacao = (area_sob_ut / relogio_simulacao) * 100;
-
-            fim_simulacao = true;
-            relogio_simulacao = tempo_simulacao;
-
-            exibirEstados();
-
-            console.log(`Total de gerações: ${indice}\n`);
-
-            console.log(`Tempo médio em fila: ${tempoMedioEmFila.toFixed(2)}`);
-            console.log(`Número médio em fila: ${numeroMedioEmFila.toFixed(2)}`);
-            console.log(`Taxa de ocupação: ${taxaDeOcupacao.toFixed(2)}%\\n`);
-
-            break;
-          } else if (proxima_chegada > tempo_simulacao) {
-            proximo_evento = "S";
-          } else {
-            proximo_evento = alternarEvento();
-      
-            if (!avancarGeracoes) await aguardar(2000);
-          }
-      
-          indice++;
-        }
+  return console.log(`
+      ===========================
+      #   DADOS DA SIMULAÇÃO   #
+      ---------------------------
+      *Status do servidor:     ${{ 0: 'Ocioso', 1: 'Em atendimento' }[statusServer]}
+      *Relogio de simulacao:   ${simulationClock.toFixed(2)}
+      *Nº de pessoas em fila:  ${queueSize}
+      *Cliente em atendimento: ${currentClient}
+      *Tempos de chegada:      [ ${queueArrival} ]
+      ---------------------------
+      *Tempo do ultimo evento: ${timeLastEvent.toFixed(2)}
+      *Proximo evento:         ${
+        simulationEnd ? 'Sem proximo evento' : { input: 'Chegada', output: 'Saida' }[nextEvent]
       }
-      
-      iniciarSimulacao();
+      *Proxima chegada:        ${
+        nextArrival < timeSimulation ? nextArrival.toFixed(2) : 'Sem proximas chegadas!'
+      }
+      *Proxima saida:          ${
+        nextOutput < 9999999999 ? nextOutput.toFixed(2) : 'Sem proxima saida!'
+      }
+      ---------------------------
+      *Area sob Q(t):          ${areaSobQt.toFixed(2)}
+      *Area sob B(t):          ${areaSobBt.toFixed(2)}
+      *Clientes atendidos:     ${clientAttended}
+      *Espera total:           ${timeTotalQueue.toFixed(2)}
+      ===========================
+  `);
+};
+
+// generation NPA for next event
+function getNextEvent(event) {
+  let seed = (x0 * a + c) % m;
+  let npa = seed / (m - 1);
+  let randomNumber = Math.abs(
+    Math.log(npa) * (event === 'input' ? timeMediumArrival : timeMediumAttendance)
+  );
+
+  x0 = seed;
+  return randomNumber;
+}
+
+// calculate areas
+const calculateAreaQt = () => (areaSobQt += (simulationClock - timeLastEvent) * queueSize);
+const calculateAreaBt = () => (areaSobBt += (simulationClock - timeLastEvent) * statusServer);
+
+// process for arrival or output
+function processArrival(arrival) {
+  timeLastEvent = simulationClock;
+  simulationClock = arrival;
+  nextArrival = simulationClock + getNextEvent('input');
+
+  if (statusServer === 0) {
+    statusServer = 1;
+    nextOutput = simulationClock + getNextEvent('output');
+    currentClient = simulationClock.toFixed(2);
+  } else {
+    calculateAreaQt();
+    calculateAreaBt();
+
+    queueArrival.push(arrival.toFixed(2));
+    queueSize++;
+  }
+}
+
+function processOutput(output) {
+  timeLastEvent = simulationClock;
+  simulationClock = output;
+
+  if (queueSize > 0) {
+    nextOutput = simulationClock + getNextEvent('output');
+    calculateAreaQt();
+
+    currentClient = queueArrival.shift();
+    queueSize = queueArrival.length;
+    timeTotalQueue += simulationClock - currentClient;
+  } else {
+    calculateAreaBt();
+
+    nextOutput = 9999999999;
+    statusServer = 0;
+  }
+
+  clientAttended++;
+}
+
+// main function to run the program
+function startSimulation() {
+  let index = 0;
+  let jumpGenerations = false;
+  let continueShowing = '';
+  let next = true;
+
+  do {
+    showStates();
+
+    console.log(`Geracao atual: ${index}`);
+    console.log('\nVoce deseja continuar exibindo os dados? (S/N)\n');
+
+    if (!jumpGenerations) continueShowing = prompt('Resposta: ');
+    jumpGenerations = Boolean(continueShowing.toUpperCase() === 'N');
+
+    if (nextEvent === 'input') processArrival(nextArrival);
+    else processOutput(nextOutput);
+
+    if (nextArrival > timeSimulation && nextOutput === 9999999999) {
+      let timeMediumInQueue = timeTotalQueue / clientAttended;
+      let numberMediumInQueue = areaSobQt / timeSimulation;
+      let occupancyRate = (areaSobBt / simulationClock) * 100;
+      simulationEnd = true;
+      showStates();
+
+      console.log(`Total de geracoes de estados: ${index + 1}\n`);
+      console.log(`Tempo medio na fila: ${timeMediumInQueue.toFixed(2)}`);
+      console.log(`Numero medio de clientes na fila: ${numberMediumInQueue.toFixed(2)}`);
+      console.log(`Taxa de ocupacao: ${occupancyRate.toFixed(2)}%\n`);
+
+      next = false;
+    } else if (nextArrival > timeSimulation) {
+      nextEvent = 'output';
+    } else {
+      //Alternate between input and output
+      nextEvent = nextArrival <= nextOutput ? 'input' : 'output';
+    }
+
+    index++;
+  } while (next);
+}
+
+startSimulation();
