@@ -139,6 +139,7 @@ function processArrival(arrival) {
 function processOutput(output) {
   timeLastEvent = simulationClock;
   simulationClock = output;
+  calculateAreaBt();
 
   if (queueSize > 0) {
     nextOutput = simulationClock + getNextEvent('output');
@@ -148,8 +149,6 @@ function processOutput(output) {
     queueSize = queueArrival.length;
     timeTotalQueue += simulationClock - currentClient;
   } else {
-    calculateAreaBt();
-
     nextOutput = 9999999999;
     statusServer = 0;
   }
@@ -178,7 +177,7 @@ function startSimulation() {
 
     if (nextArrival > timeSimulation && nextOutput === 9999999999) {
       let timeMediumInQueue = timeTotalQueue / clientAttended;
-      let numberMediumInQueue = areaSobQt / timeSimulation;
+      let numberMediumInQueue = areaSobQt / simulationClock;
       let occupancyRate = (areaSobBt / simulationClock) * 100;
       simulationEnd = true;
       showStates();
